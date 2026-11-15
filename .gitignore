@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.next/
+.env
+.env.local
+storage/
+backups/
+coverage/
+*.log
+.superpowers/
+# login de teste em texto puro: nunca vai para o repositório
+tmp-login.json
+*.tsbuildinfo

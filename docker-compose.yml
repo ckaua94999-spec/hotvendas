@@ -1,0 +1,88 @@
+name: hotvendas
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: hotvendas
+      POSTGRES_PASSWORD: hotvendas
+      POSTGRES_DB: hotvendas
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hotvendas"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://hotvendas:hotvendas@postgres:5432/hotvendas?schema=public
+      REDIS_URL: redis://redis:6379
+      INLINE_WORKERS: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "3001:3001"
+
+  worker:
+    build: ./backend
+    command: node dist/worker.js
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://hotvendas:hotvendas@postgres:5432/hotvendas?schema=public
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build: ./frontend
+    environment:
+      API_PROXY: http://api:3001
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+
+  backup:
+    image: postgres:16
+    environment:
+      PGPASSWORD: hotvendas
+    volumes:
+      - backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          stamp=$$(date +%Y%m%d-%H%M%S)
+          pg_dump -h postgres -U hotvendas -d hotvendas -f /backups/hotvendas-$$stamp.sql || true
+          find /backups -name '*.sql' -mtime +7 -delete || true
+          sleep 86400
+        done
+
+volumes:
+  pgdata:
+  backups:

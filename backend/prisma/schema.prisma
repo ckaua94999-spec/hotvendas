@@ -1,0 +1,223 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String            @id @default(cuid())
+  telegramId   String            @unique
+  username     String?
+  firstName    String?
+  lastName     String?
+  origin       String            @default("direto")
+  campaignCode String            @default("direto")
+  blocked      Boolean           @default(false)
+  firstSeenAt  DateTime          @default(now())
+  lastSeenAt   DateTime          @default(now())
+  orders       Order[]
+  events       TrackingEvent[]
+  recoveries   RecoveryMessage[]
+  downsells    DownsellSend[]
+}
+
+model Product {
+  id                 String  @id @default(cuid())
+  name               String
+  description        String  @default("")
+  priceCents         Int
+  active             Boolean @default(false)
+  presentationFileId String?
+  deliveryFileId     String?
+  presentationPath   String?
+  deliveryPath       String?
+  accessInstructions String  @default("")
+  orders             Order[]
+}
+
+model Order {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id])
+  productId         String
+  product           Product   @relation(fields: [productId], references: [id])
+  amountCents       Int
+  status            String
+  origin            String
+  campaignCode      String
+  lastStatusCheckAt DateTime?
+  createdAt         DateTime  @default(now())
+  downsellStepId    String?
+  downsellStep      DownsellStep? @relation(fields: [downsellStepId], references: [id], onDelete: SetNull)
+  payment           Payment?
+  delivery          Delivery?
+  events            TrackingEvent[]
+
+  @@index([status, createdAt])
+  @@index([userId])
+}
+
+model Payment {
+  id                 String       @id @default(cuid())
+  orderId            String       @unique
+  order              Order        @relation(fields: [orderId], references: [id])
+  gatewayChargeId    String?      @unique
+  status             String
+  amountCents        Int
+  feeCents           Int?
+  netCents           Int?
+  feeSource          String
+  environment        String
+  pixCopyPaste       String?
+  qrCodeBase64       String?      @db.Text
+  notificationSecret String?
+  expiresAt          DateTime?
+  paidAt             DateTime?
+  externalId         String
+  createdAt          DateTime     @default(now())
+  fees               PaymentFee[]
+  refund             Refund?
+}
+
+model PaymentFee {
+  id          String  @id @default(cuid())
+  paymentId   String
+  payment     Payment @relation(fields: [paymentId], references: [id])
+  amountCents Int?
+  source      String
+}
+
+model PaymentWebhook {
+  id          String    @id @default(cuid())
+  deliveryId       String    @unique
+  event            String
+  rawBody          String    @db.Text
+  signatureHeader  String    @default("") @db.Text
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model Delivery {
+  id            String            @id @default(cuid())
+  orderId       String            @unique
+  order         Order             @relation(fields: [orderId], references: [id])
+  status        String
+  fileId        String?
+  attempts      Int               @default(0)
+  lastError     String?
+  completedAt   DateTime?
+  nextAttemptAt DateTime?
+  attemptsLog   DeliveryAttempt[]
+}
+
+model DeliveryAttempt {
+  id         String   @id @default(cuid())
+  deliveryId String
+  delivery   Delivery @relation(fields: [deliveryId], references: [id])
+  status     String
+  error      String?
+  createdAt  DateTime @default(now())
+}
+
+model TrackingEvent {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  type         String
+  orderId      String?
+  order        Order?   @relation(fields: [orderId], references: [id])
+  origin       String
+  campaignCode String
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([type, createdAt])
+  @@index([userId, type])
+}
+
+model Campaign {
+  id   String @id @default(cuid())
+  code String @unique
+  name String
+}
+
+model RecoveryMessage {
+  id     String   @id @default(cuid())
+  userId String
+  user   User     @relation(fields: [userId], references: [id])
+  stage  String
+  sentAt DateTime @default(now())
+
+  @@unique([userId, stage])
+}
+
+// Um passo do fluxo de downsell: quanto esperar depois do passo anterior (ou do PIX gerado,
+// no primeiro), o que dizer e, se houver, o preço com desconto oferecido no botão.
+model DownsellStep {
+  id           String         @id @default(cuid())
+  position     Int
+  delayMinutes Int
+  message      String         @db.Text
+  priceCents   Int?
+  active       Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  sends        DownsellSend[]
+  orders       Order[]
+}
+
+// Cada pessoa recebe cada passo no máximo uma vez.
+model DownsellSend {
+  id     String       @id @default(cuid())
+  userId String
+  user   User         @relation(fields: [userId], references: [id])
+  stepId String
+  step   DownsellStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  sentAt DateTime     @default(now())
+
+  @@unique([userId, stepId])
+  @@index([stepId])
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  description String
+  category    String
+  amountCents Int
+  occurredOn  DateTime
+  notes       String   @default("")
+  createdAt   DateTime @default(now())
+}
+
+model Refund {
+  id          String   @id @default(cuid())
+  paymentId   String   @unique
+  payment     Payment  @relation(fields: [paymentId], references: [id])
+  amountCents Int
+  refundedAt  DateTime
+}
+
+model AdminUser {
+  id           String @id @default(cuid())
+  email        String @unique
+  passwordHash String
+  role         String
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  adminId   String?
+  action    String
+  entity    String
+  entityId  String
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+}
+
+model Setting {
+  key              String @id
+  valueCiphertext  String @db.Text
+}
