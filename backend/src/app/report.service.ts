@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import ExcelJS from 'exceljs'
-import { periodRange } from '../domain/calendar'
+import { calendarDay, periodRange } from '../domain/calendar'
 import { funnelCounts } from '../domain/funnel'
 import { summarizeFinance, FinancePayment } from '../domain/finance'
 import { buildSeries } from '../domain/timeseries'
@@ -225,7 +225,9 @@ export class ReportService {
 
   async saveExpense(adminId: string, input: { description: string; category: string; amountCents: number; occurredOn: string; notes?: string }, id?: string) {
     if (!CATEGORIES.includes(input.category)) return { error: 'Categoria inválida' as const }
-    const data = { description: input.description, category: input.category, amountCents: input.amountCents, occurredOn: new Date(input.occurredOn), notes: input.notes || '' }
+    const occurredOn = calendarDay(input.occurredOn)
+    if (!occurredOn) return { error: 'Data inválida' as const }
+    const data = { description: input.description, category: input.category, amountCents: input.amountCents, occurredOn, notes: input.notes || '' }
     const expense = id ? await this.prisma.expense.update({ where: { id }, data }) : await this.prisma.expense.create({ data })
     await this.settings.audit(adminId, id ? 'update' : 'create', 'expense', expense.id, null, data)
     return expense
