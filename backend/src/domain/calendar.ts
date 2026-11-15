@@ -43,6 +43,23 @@ export function periodRange(preset: string, now: Date, custom?: { from?: string;
   return { from: startToday, to: addDays(startToday, 1) }
 }
 
+/**
+ * Data de calendário digitada no painel ("2026-11-15") como o começo daquele dia em São Paulo.
+ * `new Date('2026-11-15')` dá meia-noite em UTC, que em São Paulo ainda é dia 14: a despesa
+ * de hoje caía no período de ontem. Recebendo a data completa já gravada, usa só o dia dela.
+ * Data que não existe ou texto solto devolve null.
+ */
+export function calendarDay(value: unknown): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(typeof value === 'string' ? value.trim() : '')
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const check = new Date(Date.UTC(year, month - 1, day))
+  if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day) return null
+  return zonedStart(year, month, day)
+}
+
 export type Granularity = 'hour' | 'day' | 'month'
 
 const HOUR_MS = 3_600_000
